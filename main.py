@@ -15,43 +15,23 @@ model = YOLO('best.pt')
 
 # Async generator function that yields frame data
 async def frame_generator(temp_file):
-    cap = cv2.VideoCapture(temp_file.name)
+    try:
+        cap = cv2.VideoCapture(temp_file.name)
+        crowd_density_threshold = 20  # Minimum people count for "Crowded"
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            cnf = 0.5
+            results = model(frame, conf=cnf)
+            people_found = sum(1 for r in results for _ in r.boxes)
 
-    frames = 0
-    crowd_density_threshold = 20  # Minimum people count for "Crowded"
+            crowd_status = "1" if people_found >= crowd_density_threshold else "0"
+            yield f"data: crowdStatus:{crowd_status}\n"
+    finally:
+        cap.release()
+        os.remove(temp_file.name)  # Clean up temporary file
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        
-        if not ret:
-            break  # Exit if no more frames are available
-
-        # Confidence threshold for the YOLO model
-        cnf = 0.5
-
-        # Process the frame with YOLO
-        results = model(frame, conf=cnf)
-
-        people_found = 0
-
-        # Count the number of detected people in the frame
-        for r in results:
-            boxes = r.boxes
-            for box in boxes:
-                people_found += 1
-
-        # Determine the crowd status based on the number of people found
-        crowd_status = "1" if people_found >= crowd_density_threshold else "0"
-
-        # Prepare the frame data as a JSON object
-        frame_data = {
-            "crowd_status": crowd_status
-        }
-
-        # Yield the frame data as JSON
-        yield f"data: crowdStatus:{crowd_status}\n"
-
-        frames += 1
 
 
 @app.post("/upload-video/")
